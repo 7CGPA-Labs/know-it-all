@@ -22,4 +22,7 @@ pip install -r backend/requirements.txt
 # Copy backend
 cp -r backend build_output/opt/knowitall/
 
+# Build the debian package
+dpkg-deb --build build_output knowitall.deb
+
 echo "Debian package build script completed successfully."
