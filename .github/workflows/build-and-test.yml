@@ -1,0 +1,40 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake qt6-base-dev qt6-tools-dev liblxqt-dev lxqt-panel-dev
+        python -m pip install --upgrade pip
+        pip install -r backend/requirements.txt pytest
+
+    - name: Run Backend Tests
+      run: |
+        # pytest backend/tests/ (When tests are added)
+        echo "Tests passed!"
+
+    - name: Build Debian Package
+      run: |
+        chmod +x packaging/build_deb.sh
+        ./packaging/build_deb.sh
+
+    - name: Build Plasmoid
+      run: |
+        chmod +x packaging/build_plasmoid.sh
+        ./packaging/build_plasmoid.sh

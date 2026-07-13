@@ -1,0 +1,6 @@
+beautifulsoup4
+requests
+nltk
+pydbus
+Jinja2
+markdown

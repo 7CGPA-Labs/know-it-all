@@ -1,77 +1,53 @@
-# Lubuntu Lark: Cloud-Hybrid Dual-Provider AI Applet
+# Know-It-All: Semi-AI NLP Webcrawler (Panel Widget)
 
-Lubuntu Lark is a highly optimized, cloud-hybrid AI taskbar widget built on top of the **LXQt (Qt6) Desktop Environment**. 
+Know-It-All is a native, localized "Semi-AI" panel widget. It bypasses the need for heavy LLMs (like Gemini or Copilot) by leveraging classical Natural Language Processing (NLP) to parse user intent, performing intelligent web crawling via DuckDuckGo, and presenting a localized extractive summary inside a beautiful, Dark-Copilot themed UI.
 
-This applet replaces heavy local LLM inference setups with a low-footprint, embedded web viewport streaming Google Gemini and Microsoft Copilot. It utilizes native Qt6 components and Chromium optimizations to minimize memory and CPU usage on resource-constrained hardware.
+## Architecture
 
----
+The project is structured with a powerful background Python D-Bus service and multiple lightweight, native panel widget frontends tailored to different Desktop Environments.
 
-## 1. System Features & Optimizations
+1.  **Python D-Bus Backend (`org.knowitall.CrawlerService`)**
+    *   Listens for conversational queries over the D-Bus session bus.
+    *   Uses `nltk` for keyword extraction and query intent.
+    *   Scrapes DuckDuckGo (HTML version) with `beautifulsoup4`.
+    *   Summarizes text and renders a Copilot-styled HTML response using `Jinja2`.
+2.  **Native Panel Frontends**
+    *   **LXQt:** Native Qt6/C++ panel plugin.
+    *   **XFCE:** Python/GTK3 PyGObject panel plugin.
+    *   **KDE Plasma:** QML Plasmoid widget.
 
-*   **Low-Footprint Chromium Engine:** Pre-configures strict rendering and thread optimizations via `qputenv` command-line flags before initialization:
-    *   `--single-process` (Clamps execution to a single background process thread)
-    *   `--disable-gpu` (Disables heavy 3D acceleration and composition overhead)
-    *   `--mute-audio` (Shuts down hardware audio routing)
-    *   `--disable-extensions` & `--disable-notifications` (Purges background check loops)
-*   **Dual Persistent Sessions:** Redirects cookie, local storage, and cache storage profiles to a custom path: `~/.config/lark/ai_profile`. This keeps both Google and Microsoft user sessions active simultaneously.
-*   **Instant Provider Switching:** Hosts separate `QWebEngineView` instances inside a `QStackedWidget` for Gemini and Copilot. Users can toggle between providers instantly without reloading the page or losing current chat context.
-*   **Aesthetic Integration:** Uses a custom JavaScript injection hook on page loads to inject CSS stylesheets hiding standard web banners and navigation headers, offering a clean, native desktop application appearance matching the dark VS Code GitHub Copilot theme (`#0d1117` background, subtle `#30363d` borders).
+## Build and Installation
 
----
+### Prerequisites
 
-## 2. Compilation & Development
-
-### 2.1 Prerequisites
-
-Ensure your target system has the following build tools and libraries installed:
+Ensure you have the necessary system libraries installed:
 ```bash
 sudo apt update
-sudo apt install build-essential cmake git qt6-base-dev qt6-webengine-dev liblxqt-dev lxqt-panel-dev
+sudo apt install build-essential cmake qt6-base-dev qt6-tools-dev liblxqt-dev lxqt-panel-dev python3 python3-venv python3-gi gir1.2-gtk-3.0 gir1.2-xfcepanel-2.0
 ```
 
-### 2.2 Compilation Steps
+### Packaging via GitHub Actions or Script
 
-To compile and install the plugin module directly on your system:
+This repository uses automated scripts to build a Debian package (`.deb`) containing the Python backend and native C++/Python plugins, as well as a standalone `.plasmoid` file for KDE.
+
+To build the Debian package locally:
 ```bash
-# 1. Create a build directory
-mkdir build && cd build
-
-# 2. Configure using CMake
-cmake -DCMAKE_BUILD_TYPE=Release ..
-
-# 3. Compile the shared library
-make
-
-# 4. Install the library module
-sudo make install
+./packaging/build_deb.sh
 ```
 
----
-
-## 3. Debian Packaging (`.deb` Generation)
-
-To generate a deployable Debian archive (`.deb`) for distribution:
-
+To build the KDE Plasmoid locally:
 ```bash
-# Make the script executable
-chmod +x build_package.sh
-
-# Run the build and packaging process
-./build_package.sh
+./packaging/build_plasmoid.sh
 ```
 
-This automates compiling and packaging, outputting a package file like `lubuntu-lark-neuroshell_1.0.0-git_amd64.deb` in the project root.
+### Running the Backend Manually
 
-### Installation
-
-Deploy the package on your target Lubuntu system:
-
+If you'd like to test the backend crawler service locally before installing the plugins:
 ```bash
-sudo apt install ./lubuntu-lark-neuroshell_*.deb
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python3 crawler_service.py
 ```
-
-Once installed, restart the LXQt panel to register the new widget:
-```bash
-lxqt-panel --restart
-```
-Right-click your panel, choose **Configure Panel** / **Add Panel Widgets**, and add the AI Applet.
+You can then test it using `dbus-send` or `qdbus`.
