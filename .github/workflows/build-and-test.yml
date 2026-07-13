@@ -20,7 +20,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake qt6-base-dev qt6-tools-dev liblxqt-dev lxqt-panel-dev
+        sudo apt-get install -y build-essential cmake qt6-base-dev qt6-tools-dev
         python -m pip install --upgrade pip
         pip install -r backend/requirements.txt pytest
 
