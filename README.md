@@ -12,7 +12,6 @@ The project is structured with a powerful background Python D-Bus service and mu
     *   Scrapes DuckDuckGo (HTML version) with `beautifulsoup4`.
     *   Summarizes text and renders a Copilot-styled HTML response using `Jinja2`.
 2.  **Native Panel Frontends**
-    *   **LXQt:** Native Qt6/C++ panel plugin.
     *   **XFCE:** Python/GTK3 PyGObject panel plugin.
     *   **KDE Plasma:** QML Plasmoid widget.
 
@@ -23,7 +22,7 @@ The project is structured with a powerful background Python D-Bus service and mu
 Ensure you have the necessary system libraries installed:
 ```bash
 sudo apt update
-sudo apt install build-essential cmake qt6-base-dev qt6-tools-dev liblxqt-dev lxqt-panel-dev python3 python3-venv python3-gi gir1.2-gtk-3.0 gir1.2-xfcepanel-2.0
+sudo apt install python3 python3-venv python3-gi gir1.2-gtk-3.0 gir1.2-xfcepanel-2.0
 ```
 
 ### Packaging via GitHub Actions or Script
