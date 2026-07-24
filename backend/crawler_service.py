@@ -32,7 +32,7 @@ class CrawlerService(object):
         search_results = scraper.scrape_duckduckgo(" ".join(keywords))
         
         # 3. Summarize
-        summary_text = summarizer.summarize(search_results)
+        summary_text = summarizer.summarize(search_results, query=query)
         
         # 4. Format with Jinja2
         template = self.jinja_env.get_template('response.jinja2')

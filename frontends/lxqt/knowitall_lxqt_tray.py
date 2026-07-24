@@ -55,6 +55,23 @@ class KnowItAllWidget(QWidget):
                 border-radius: 6px;
                 padding: 10px;
             }
+            QScrollBar:vertical {
+                background-color: #0d1117;
+                width: 8px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #30363d;
+                min-height: 20px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #8b949e;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                background: none;
+                height: 0px;
+            }
         """)
 
         # Layout
@@ -77,6 +94,7 @@ class KnowItAllWidget(QWidget):
 
         # Browser Viewport
         self.browser = QTextBrowser()
+        self.browser.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.browser.setOpenExternalLinks(True)
         self.browser.setHtml("""
             <div style='color: #8b949e; text-align: center; margin-top: 150px;'>
@@ -113,12 +131,20 @@ class KnowItAllWidget(QWidget):
     def show_near_tray(self, tray_icon):
         # Position panel overlay nicely near the system tray icon
         geom = tray_icon.geometry()
-        pos = geom.topLeft()
+        
+        # Check if geometry is empty/unset (common on some X11/LXQt window managers)
+        if geom.isEmpty() or (geom.x() == 0 and geom.y() == 0):
+            # Fallback to mouse cursor position
+            pos = QCursor.pos()
+            x = pos.x() - self.width() // 2
+            y = pos.y() - self.height() - 5
+        else:
+            pos = geom.topLeft()
+            x = pos.x() - self.width() // 2 + geom.width() // 2
+            y = pos.y() - self.height() - 5
         
         # Center or adjust position relative to screen size
         screen = QApplication.primaryScreen().size()
-        x = pos.x() - self.width() // 2 + geom.width() // 2
-        y = pos.y() - self.height() - 5
         
         # Keep window within screen boundaries
         if x < 0: x = 10
