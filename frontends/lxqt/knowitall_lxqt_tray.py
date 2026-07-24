@@ -132,25 +132,39 @@ class KnowItAllWidget(QWidget):
         # Position panel overlay nicely near the system tray icon
         geom = tray_icon.geometry()
         
-        # Check if geometry is empty/unset (common on some X11/LXQt window managers)
+        # Determine X coordinate (center on tray or cursor)
         if geom.isEmpty() or (geom.x() == 0 and geom.y() == 0):
-            # Fallback to mouse cursor position
             pos = QCursor.pos()
-            x = pos.x() - self.width() // 2
-            y = pos.y() - self.height() - 5
+            target_x = pos.x()
         else:
             pos = geom.topLeft()
-            x = pos.x() - self.width() // 2 + geom.width() // 2
-            y = pos.y() - self.height() - 5
+            target_x = pos.x() + geom.width() // 2
+            
+        # Get screen geometries
+        screen = QApplication.primaryScreen()
+        screen_geom = screen.geometry()
+        avail_geom = screen.availableGeometry()
         
-        # Center or adjust position relative to screen size
-        screen = QApplication.primaryScreen().size()
+        # Calculate horizontal position (x)
+        x = target_x - self.width() // 2
         
-        # Keep window within screen boundaries
-        if x < 0: x = 10
-        if x + self.width() > screen.width(): x = screen.width() - self.width() - 10
-        if y < 0: y = pos.y() + geom.height() + 5
-        
+        # Ensure horizontal boundaries are within the working area
+        if x < avail_geom.left() + 5:
+            x = avail_geom.left() + 5
+        if x + self.width() > avail_geom.right() - 5:
+            x = avail_geom.right() - self.width() - 5
+            
+        # Calculate vertical position (y) based on panel location
+        # Check if panel is at top (available top is pushed down)
+        if avail_geom.top() > screen_geom.top():
+            y = avail_geom.top() + 5
+        # Check if panel is at bottom (available bottom is pulled up)
+        elif avail_geom.bottom() < screen_geom.bottom() - 1:
+            y = avail_geom.bottom() - self.height() - 5
+        # Default fallback (usually bottom panel)
+        else:
+            y = avail_geom.bottom() - self.height() - 5
+            
         self.move(x, y)
         if self.isVisible():
             self.hide()
