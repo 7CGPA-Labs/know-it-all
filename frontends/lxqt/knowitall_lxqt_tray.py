@@ -2,7 +2,7 @@ import sys
 import os
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLineEdit, QPushButton, QTextBrowser, QSystemTrayIcon, QMenu, QAction, QLabel)
-from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QDesktopServices, QCursor
 from pydbus import SessionBus
 

@@ -1,4 +1,3 @@
-import sys
 from pydbus import SessionBus
 from gi.repository import GLib
 import nlp_engine

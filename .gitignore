@@ -67,3 +67,11 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Python & Packaging builds
+__pycache__/
+*.pyc
+venv/
+build_output/
+*.deb
+.pytest_cache/
