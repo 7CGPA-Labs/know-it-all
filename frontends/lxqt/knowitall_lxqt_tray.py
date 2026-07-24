@@ -1,7 +1,7 @@
 import sys
 import os
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QLineEdit, QPushButton, QTextBrowser, QSystemTrayIcon, QMenu, QAction)
+                             QLineEdit, QPushButton, QTextBrowser, QSystemTrayIcon, QMenu, QAction, QLabel)
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QIcon, QDesktopServices, QCursor
 from pydbus import SessionBus
@@ -9,6 +9,10 @@ from pydbus import SessionBus
 class KnowItAllWidget(QWidget):
     def __init__(self):
         super().__init__()
+        self.drag_position = None
+        self.resize_margin = 8
+        self.resizing_edge = 0
+        self.setMouseTracking(True)
         self.init_ui()
 
     def init_ui(self):
@@ -78,6 +82,40 @@ class KnowItAllWidget(QWidget):
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(12, 12, 12, 12)
         main_layout.setSpacing(10)
+
+        # Header Row
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 2)
+        
+        title_label = QLabel("KNOW-IT-ALL")
+        title_label.setStyleSheet("font-weight: bold; color: #58a6ff; border: none; background: transparent;")
+        
+        self.minimize_btn = QPushButton("—")
+        self.minimize_btn.setFixedSize(24, 24)
+        self.minimize_btn.setCursor(Qt.PointingHandCursor)
+        self.minimize_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                border-radius: 4px;
+                color: #8b949e;
+                font-weight: bold;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #21262d;
+                color: #c9d1d9;
+            }
+            QPushButton:pressed {
+                background-color: #161b22;
+            }
+        """)
+        self.minimize_btn.clicked.connect(self.hide)
+        
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        header_layout.addWidget(self.minimize_btn)
+        main_layout.addLayout(header_layout)
 
         # Input Row
         input_layout = QHBoxLayout()
@@ -174,9 +212,85 @@ class KnowItAllWidget(QWidget):
             self.query_input.setFocus()
 
     def focusOutEvent(self, event):
-        # Auto hide when user clicks away
-        self.hide()
+        if not self.drag_position and not self.resizing_edge:
+            self.hide()
         super().focusOutEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            if self.resizing_edge != 0:
+                event.accept()
+            else:
+                self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
+                event.accept()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        pos = event.pos()
+        x, y = pos.x(), pos.y()
+        w, h = self.width(), self.height()
+        
+        if not event.buttons() & Qt.LeftButton:
+            edge = 0
+            if x < self.resize_margin:
+                edge |= 1
+            elif x > w - self.resize_margin:
+                edge |= 2
+            if y < self.resize_margin:
+                edge |= 4
+            elif y > h - self.resize_margin:
+                edge |= 8
+                
+            self.resizing_edge = edge
+            
+            if edge == (1 | 4) or edge == (2 | 8):
+                self.setCursor(Qt.SizeFDiagCursor)
+            elif edge == (2 | 4) or edge == (1 | 8):
+                self.setCursor(Qt.SizeBDiagCursor)
+            elif edge & 1 or edge & 2:
+                self.setCursor(Qt.SizeHorCursor)
+            elif edge & 4 or edge & 8:
+                self.setCursor(Qt.SizeVerCursor)
+            else:
+                self.setCursor(Qt.ArrowCursor)
+        else:
+            if self.resizing_edge:
+                global_pos = event.globalPos()
+                rect = self.geometry()
+                min_w = 300
+                min_h = 400
+                
+                if self.resizing_edge & 1:
+                    new_w = rect.right() - global_pos.x()
+                    if new_w >= min_w:
+                        rect.setLeft(global_pos.x())
+                elif self.resizing_edge & 2:
+                    new_w = global_pos.x() - rect.left()
+                    if new_w >= min_w:
+                        rect.setRight(global_pos.x())
+                        
+                if self.resizing_edge & 4:
+                    new_h = rect.bottom() - global_pos.y()
+                    if new_h >= min_h:
+                        rect.setTop(global_pos.y())
+                elif self.resizing_edge & 8:
+                    new_h = global_pos.y() - rect.top()
+                    if new_h >= min_h:
+                        rect.setBottom(global_pos.y())
+                        
+                self.setGeometry(rect)
+                event.accept()
+            elif self.drag_position is not None:
+                self.move(event.globalPos() - self.drag_position)
+                event.accept()
+                
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self.drag_position = None
+        self.resizing_edge = 0
+        self.setCursor(Qt.ArrowCursor)
+        super().mouseReleaseEvent(event)
 
 
 class KnowItAllTrayApp:
