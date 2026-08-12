@@ -301,109 +301,137 @@ def summarize_classical(results: list, num_sentences: int, query: str) -> str:
 # --- Non-Sequential ReAct Agent Loop ---
 
 def clean_final_response(response: str) -> str:
-    # Safely extract inner arguments if the model ends on a raw Action string
-    match = re.search(r'Action:\s*\w+\((.*)\)', response, re.DOTALL)
+    # 1. Check for Action: FinalAnswer
+    match = re.search(r'Action:\s*FinalAnswer\((.*)\)', response, re.DOTALL | re.IGNORECASE)
     if match:
-        arg = match.group(1).strip().strip('"').strip("'")
+        return match.group(1).strip().strip('"').strip("'")
+        
+    # 2. General Action: Name(...) fallback
+    match_any = re.search(r'Action:\s*\w+\((.*)\)', response, re.DOTALL)
+    if match_any:
+        arg = match_any.group(1).strip().strip('"').strip("'")
         if "," in arg:
             parts = arg.split(",", 1)
-            # Try to get the second argument (the text context/response) if present
             return parts[1].strip().strip('"').strip("'")
         return arg
+        
+    # 3. If no Action: block exists, but there is a Thought: block, return the text after "Thought:"
+    if "Thought:" in response:
+        final_match = re.search(r'FinalAnswer:\s*(.*)', response, re.DOTALL | re.IGNORECASE)
+        if final_match:
+            return final_match.group(1).strip()
+            
+        thought_match = re.search(r'Thought:\s*(.*)', response, re.DOTALL | re.IGNORECASE)
+        if thought_match:
+            content = thought_match.group(1).strip()
+            content = re.sub(r'Action:\s*.*', '', content, flags=re.DOTALL).strip()
+            return content
+            
     return response
 
-def run_agent_loop(query: str, config: dict, search_results_holder: list) -> str:
-    system_prompt = (
-        "You are a helpful local assistant. Solve the user query step-by-step by generating Thoughts and Actions.\n"
-        "Available actions:\n"
-        "- Scrape(query): Searches the web for query terms and returns snippet text.\n"
-        "- Calculate(expression): Solves a simple mathematical expression (e.g. 5+5, 12*4).\n"
-        "- Rerank(query, text): Reranks sentences in text and returns the top 3 relevant sentences.\n"
-        "- Verify(query, text): Verifies facts in text, filtering out contradictions.\n"
-        "- FinalAnswer(response): Concludes and outputs the final answer to the user.\n\n"
-        "You MUST respond in the following format:\n"
-        "Thought: <your reasoning>\n"
-        "Action: <ActionName>(<arguments>)\n\n"
-        "Example:\n"
-        "Thought: I need to search the web for python.\n"
-        "Action: Scrape(\"python programming\")"
-    )
-    
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Query: {query}"}
-    ]
-    
-    current_context = ""
-    
-    for turn in range(3):
+def run_agent_loop(query: str, config: dict, search_results_holder: list, initial_context: str = "", intent: str = "search") -> str:
+    # 1. Resolve math queries directly
+    if intent == "math":
+        math_expr_match = re.search(r'([0-9+\-*/%().\s]+)', query)
+        expr = math_expr_match.group(1).strip() if math_expr_match else query
+        return evaluate_expression(expr)
+        
+    # 2. Resolve general chat directly
+    if intent == "chat":
         boss_model, boss_tokenizer = get_boss_generator(config["main_boss"])
+        messages = [
+            {"role": "system", "content": "You are a helpful local assistant. Answer the user query naturally and concisely. Keep it under 2-3 sentences."},
+            {"role": "user", "content": query}
+        ]
         prompt = boss_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = boss_tokenizer([prompt], return_tensors="pt")
-        
         outputs = boss_model.generate(
             inputs["input_ids"],
             max_new_tokens=150,
             do_sample=True,
             temperature=0.7,
-            top_p=0.9,
             pad_token_id=boss_tokenizer.eos_token_id
         )
-        
         gen_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs["input_ids"], outputs)]
-        assistant_resp = boss_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)[0].strip()
+        return boss_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)[0].strip()
+
+    # 3. Search intent (Factual RAG pipeline)
+    if not initial_context:
+        return "No search results found."
         
-        print(f"Agent Turn {turn+1}: {assistant_resp}")
+    # Preprocessing with Sidekicks (Rerank + Verify)
+    ranked_context = run_reranker_sidekick(query, initial_context, config)
+    verified_context = run_verifier_sidekick(query, ranked_context, config)
+    
+    boss_model, boss_tokenizer = get_boss_generator(config["main_boss"])
+    
+    # --- Turn 1: Initial Generation ---
+    system_prompt = (
+        "You are a helpful local assistant. Write a detailed, comprehensive, and highly cohesive summary of the provided Context to answer the user Query. "
+        "Do not mention any website metadata, citations, or irrelevant details. Answer in detail in multiple lines."
+    )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Context: {verified_context}\n\nQuery: {query}"}
+    ]
+    prompt = boss_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = boss_tokenizer([prompt], return_tensors="pt")
+    outputs = boss_model.generate(
+        inputs["input_ids"],
+        max_new_tokens=300,
+        do_sample=True,
+        temperature=0.7,
+        pad_token_id=boss_tokenizer.eos_token_id
+    )
+    gen_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs["input_ids"], outputs)]
+    summary_text = boss_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)[0].strip()
+    
+    print(f"Agent Turn 1 (Initial): {summary_text}")
+    
+    # --- Turn 2: Reflection & Self-Correction (Cognitive Back-and-Forth) ---
+    gen_sentences = [s for s in get_sentences(summary_text) if len(s.split()) >= 3]
+    if gen_sentences:
+        verifier = get_cross_encoder(config["sidekicks"]["verifier"])
+        nli_pairs = [(verified_context, sent) for sent in gen_sentences]
+        preds = verifier.predict(nli_pairs)
+        scores = preds.tolist() if hasattr(preds, 'tolist') else list(preds)
         
-        # Parse thought and action
-        action_match = re.search(r'Action:\s*(\w+)\((.*)\)', assistant_resp)
-        if not action_match:
-            # Fallback parsing for 0.5B model inconsistencies
-            action_names = ["Scrape", "Calculate", "Rerank", "Verify", "FinalAnswer"]
-            found = False
-            for name in action_names:
-                if name in assistant_resp:
-                    inner_match = re.search(fr'{name}\s*[\(\"\']+(.*?)[\)\"\']+', assistant_resp)
-                    if inner_match:
-                        action_name = name
-                        action_args = inner_match.group(1)
-                        found = True
-                        break
-            if not found:
-                return assistant_resp
-        else:
-            action_name = action_match.group(1)
-            action_args = action_match.group(2).strip().strip('"').strip("'")
+        hallucinated_sents = []
+        for scores_array, sent in zip(scores, gen_sentences):
+            contradiction = scores_array[0]
+            entailment = scores_array[1]
+            neutral = scores_array[2]
+            if contradiction > entailment and contradiction > neutral:
+                hallucinated_sents.append(sent)
+                
+        if hallucinated_sents:
+            # Warn Qwen about the hallucinations and ask it to self-correct
+            warning_msg = (
+                f"Your previous response was: '{summary_text}'\n\n"
+                f"Warning: The following statements contradict the verified facts: '{' '.join(hallucinated_sents)}'. "
+                f"Please rewrite your answer, correcting these statements based strictly on the context below:\n"
+                f"Context: {verified_context}"
+            )
+            print(f"Hallucination Guardrail: Warning boss to self-correct on: {hallucinated_sents}")
             
-        messages.append({"role": "assistant", "content": assistant_resp})
-        
-        if action_name == "FinalAnswer":
-            return action_args
-        elif action_name == "Scrape":
-            results = scrape_duckduckgo(action_args, search_results_holder)
-            if results:
-                observation = " ".join([res["snippet"] for res in results])
-                current_context = observation
-                obs_text = f"Observation: Scraped content: {observation[:800]}..."
-            else:
-                obs_text = "Observation: No search results found."
-        elif action_name == "Calculate":
-            result = evaluate_expression(action_args)
-            obs_text = f"Observation: Calculation result is: {result}"
-        elif action_name == "Rerank":
-            text_to_rank = action_args if action_args else current_context
-            ranked_sentences = run_reranker_sidekick(query, text_to_rank, config)
-            obs_text = f"Observation: Reranked sentences: {ranked_sentences}"
-        elif action_name == "Verify":
-            text_to_verify = action_args if action_args else current_context
-            verified_sentences = run_verifier_sidekick(query, text_to_verify, config)
-            obs_text = f"Observation: Verified sentences: {verified_sentences}"
-        else:
-            obs_text = f"Observation: Unknown action {action_name}."
+            messages.append({"role": "assistant", "content": summary_text})
+            messages.append({"role": "user", "content": warning_msg})
             
-        messages.append({"role": "user", "content": obs_text})
-        
-    return clean_final_response(assistant_resp)
+            prompt = boss_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            inputs = boss_tokenizer([prompt], return_tensors="pt")
+            outputs = boss_model.generate(
+                inputs["input_ids"],
+                max_new_tokens=300,
+                do_sample=True,
+                temperature=0.7,
+                pad_token_id=boss_tokenizer.eos_token_id
+            )
+            gen_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs["input_ids"], outputs)]
+            summary_text = boss_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)[0].strip()
+            
+            print(f"Agent Turn 2 (Self-Corrected): {summary_text}")
+            
+    return run_hallucination_guardrail(summary_text, verified_context, config)
 
 
 # --- D-Bus Service (Previously crawler_service.py) ---
@@ -455,75 +483,16 @@ class CrawlerService(object):
                 # 1. Run classifier sidekick to route query intent
                 intent = run_intent_classifier_sidekick(query, config)
                 
-                if intent == "math":
-                    # Route to Math Solver directly
-                    math_expr_match = re.search(r'([0-9+\-*/%().\s]+)', query)
-                    expr = math_expr_match.group(1).strip() if math_expr_match else query
-                    summary_text = evaluate_expression(expr)
-                    
-                elif intent == "chat":
-                    # Direct chat with the main boss Qwen (no web latency!)
-                    boss_model, boss_tokenizer = get_boss_generator(config["main_boss"])
-                    messages = [
-                        {"role": "system", "content": "You are a helpful local assistant. Answer the user query naturally and concisely. Keep it under 2-3 sentences."},
-                        {"role": "user", "content": query}
-                    ]
-                    prompt = boss_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                    inputs = boss_tokenizer([prompt], return_tensors="pt")
-                    outputs = boss_model.generate(
-                        inputs["input_ids"],
-                        max_new_tokens=150,
-                        do_sample=True,
-                        temperature=0.7,
-                        pad_token_id=boss_tokenizer.eos_token_id
-                    )
-                    gen_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs["input_ids"], outputs)]
-                    summary_text = boss_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)[0].strip()
-                    
-                else:
-                    # intent == "search"
-                    # Run Keyword Extractor sidekick
+                initial_ctx = ""
+                if intent == "search":
+                    # Pre-populate context at Turn 0 using Keyword Extractor + Scraper
                     search_keywords = get_keywords_query(query)
-                    
-                    # Run Web Scraper (Informant)
                     search_results_holder = scrape_duckduckgo(search_keywords)
-                    
                     if search_results_holder:
-                        context_text = " ".join([res["snippet"] for res in search_results_holder])
+                        initial_ctx = " ".join([res["snippet"] for res in search_results_holder])
                         
-                        # Run Reranker sidekick
-                        ranked_context = run_reranker_sidekick(query, context_text, config)
-                        
-                        # Run NLI Verifier sidekick
-                        verified_context = run_verifier_sidekick(query, ranked_context, config)
-                        
-                        # Ultimate generation via Qwen (Main Boss)
-                        boss_model, boss_tokenizer = get_boss_generator(config["main_boss"])
-                        messages = [
-                            {
-                                "role": "system", 
-                                "content": "You are a helpful local assistant. Write a detailed, comprehensive, and highly cohesive summary of the provided Context to answer the user Query. Do not mention any website metadata, citations, or irrelevant details. Answer in detail in multiple lines."
-                            },
-                            {
-                                "role": "user", 
-                                "content": f"Context: {verified_context}\n\nQuery: {query}"
-                            }
-                        ]
-                        prompt = boss_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                        inputs = boss_tokenizer([prompt], return_tensors="pt")
-                        outputs = boss_model.generate(
-                            inputs["input_ids"],
-                            max_new_tokens=300,
-                            do_sample=True,
-                            temperature=0.7,
-                            pad_token_id=boss_tokenizer.eos_token_id
-                        )
-                        gen_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs["input_ids"], outputs)]
-                        raw_summary = boss_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)[0].strip()
-                        # Apply Hallucination Guardrail sidekick
-                        summary_text = run_hallucination_guardrail(raw_summary, verified_context, config)
-                    else:
-                        summary_text = "No search results found."
+                # 2. Invoke the self-correcting ReAct Agent loop
+                summary_text = run_agent_loop(query, config, search_results_holder, initial_ctx, intent)
             except Exception as e:
                 print(f"ML Pipeline error (falling back to classical): {e}")
                 

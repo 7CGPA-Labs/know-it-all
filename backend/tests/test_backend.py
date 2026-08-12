@@ -78,10 +78,10 @@ class TestAgentLoopMock(unittest.TestCase):
     @patch('crawler_service.get_cross_encoder')
     @patch('crawler_service.get_boss_generator')
     @patch('crawler_service.scrape_duckduckgo')
-    def test_agent_loop_scrape_and_answer(self, mock_scrape, mock_get_boss, mock_get_cross, mock_get_transformer):
+    def test_agent_loop_reflection_and_correction(self, mock_scrape, mock_get_boss, mock_get_cross, mock_get_transformer):
         # Mock Scrape to append results to holder
         def custom_scrape(query, holder_list=None):
-            res = [{"title": "Test", "url": "https://test.com", "snippet": "Argentina won the 2022 world cup in Qatar."}]
+            res = [{"title": "Test", "url": "https://test.com", "snippet": "Superman is a hero from DC Comics. Batman is a hero from DC Comics."}]
             if holder_list is not None:
                 holder_list.extend(res)
             return res
@@ -100,8 +100,19 @@ class TestAgentLoopMock(unittest.TestCase):
             mock_tensor.tolist.return_value = [0.9]
             mock_cos_sim.return_value = [mock_tensor]
             
-            # Mock Cross-Encoder scores for NLI (contradiction=0.1, entailment=0.8, neutral=0.1)
-            mock_cross.predict.return_value = [[0.1, 0.8, 0.1]]
+            # Mock Cross-Encoder scores:
+            # 1. Reranker prediction (1 float score)
+            # 2. Verifier prediction (1 NLI array)
+            # 3. Turn 1 Guardrail check (2 NLI arrays: contradiction=0.9 for first)
+            # 4. Turn 2 Guardrail check (2 NLI arrays: all clean!)
+            # 5. Post-guardrail final verification check (2 NLI arrays: all clean!)
+            mock_cross.predict.side_effect = [
+                [1.5], # Reranker score
+                [[0.1, 0.8, 0.1]], # Verifier check on scraped content
+                [[0.9, 0.05, 0.05], [0.1, 0.8, 0.1]], # Turn 1 Guardrail check
+                [[0.1, 0.8, 0.1], [0.1, 0.8, 0.1]], # Turn 2 Guardrail check
+                [[0.1, 0.8, 0.1], [0.1, 0.8, 0.1]]  # Final verification check
+            ]
             
             # Mock Main Boss (Qwen)
             mock_model = MagicMock()
@@ -110,12 +121,10 @@ class TestAgentLoopMock(unittest.TestCase):
             mock_tokenizer.apply_chat_template.return_value = "<mock_prompt>"
             mock_tokenizer.return_value = {"input_ids": MagicMock()}
             mock_tokenizer.batch_decode.side_effect = [
-                # Turn 1: Action: Scrape
-                ["Thought: I need to search the web.\nAction: Scrape(\"latest world cup winner\")"],
-                # Turn 2: Action: Verify
-                ["Thought: I should verify the details.\nAction: Verify(\"latest world cup winner\", \"Argentina won the 2022 world cup\")"],
-                # Turn 3: Action: FinalAnswer
-                ["Thought: The facts are verified.\nAction: FinalAnswer(\"Argentina won the 2022 world cup.\")"]
+                # Turn 1: Initial response with hallucination
+                ["Superman is from Marvel. Batman is from DC."],
+                # Turn 2: Corrected response
+                ["Superman is from DC. Batman is from DC."]
             ]
             mock_get_boss.return_value = (mock_model, mock_tokenizer)
             
@@ -129,9 +138,15 @@ class TestAgentLoopMock(unittest.TestCase):
             }
             
             holder = []
-            answer = crawler_service.run_agent_loop("Who won the latest world cup?", config, holder)
-            self.assertEqual(answer, "Argentina won the 2022 world cup.")
-            self.assertEqual(len(holder), 1)
+            initial_ctx = "Superman is a hero from DC Comics. Batman is a hero from DC Comics."
+            answer = crawler_service.run_agent_loop(
+                query="Tell me about Superman and Batman.",
+                config=config,
+                search_results_holder=holder,
+                initial_context=initial_ctx,
+                intent="search"
+            )
+            self.assertEqual(answer, "Superman is from DC. Batman is from DC.")
 
     @patch('crawler_service.get_cross_encoder')
     def test_run_hallucination_guardrail(self, mock_get_cross):
