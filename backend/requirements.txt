@@ -1,7 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 beautifulsoup4
 requests
-nltk
 pydbus
 Jinja2
 markdown
