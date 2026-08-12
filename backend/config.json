@@ -1,0 +1,8 @@
+{
+    "sidekicks": {
+        "embedding": "sentence-transformers/all-MiniLM-L6-v2",
+        "reranker": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "verifier": "cross-encoder/nli-distilroberta-base"
+    },
+    "main_boss": "Qwen/Qwen2.5-0.5B-Instruct"
+}
