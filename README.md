@@ -16,17 +16,19 @@ graph TD
     B -->|Classifies Search| E[Sidekick 3: Keyword Extractor]
     E -->|Search Terms| F[Informant: Web Scraper]
     F -->|Raw Snippets| G[Sidekick 4: Cross-Encoder Reranker]
-    G -->|Top 5 Sentences| H[Sidekick 5: NLI Fact-Verifier]
+    G -->|Top 8 Sentences| H[Sidekick 5: NLI Fact-Verifier]
     H -->|Verified Context| D
-    D -->|Final HTML| I[Beautiful Response]
+    D -->|Generated Answer| J[Sidekick 6: NLI Hallucination Guardrail]
+    J -->|Verified Final HTML| I[Beautiful Response]
 ```
 
-### The Sidekicks (Context Preprocessors)
+### The Sidekicks (Context Preprocessors & Guardrails)
 1.  **Sidekick 1 (NLI Intent Classifier):** Uses `cross-encoder/nli-distilroberta-base` to determine if a query is a math calculation, conversational prompt, or web search.
 2.  **Sidekick 2 (Math Solver):** Safely parses and evaluates mathematical expressions.
 3.  **Sidekick 3 (Keyword Extractor):** Cleans stop-words and extracts core search terms from the query.
 4.  **Sidekick 4 (Semantic Reranker):** Tokenizes context and uses `ms-marco-MiniLM-L-6-v2` to extract the most relevant sentences.
 5.  **Sidekick 5 (NLI Fact-Verifier):** Verifies facts and removes contradictions using Natural Language Inference.
+6.  **Sidekick 6 (NLI Hallucination Guardrail):** Performs post-generation verification, splitting the generated text into sentences and filtering out any sentence unsupported by the retrieved context.
 
 ### The Main Boss (Generator)
 *   **Qwen2.5-0.5B-Instruct:** Generates a conversational, cohesive final answer using the preprocessed context.
