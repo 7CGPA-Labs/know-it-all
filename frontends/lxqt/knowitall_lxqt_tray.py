@@ -307,7 +307,7 @@ class KnowItAllTrayApp:
         # Use a standard fallback system icon (like a search or network globe icon)
         icon = QIcon.fromTheme("system-search", QIcon.fromTheme("applications-other"))
         self.tray.setIcon(icon)
-        self.tray.setToolTip("Know-It-All (Semi-AI Panel)")
+        self.tray.setToolTip("Know-It-All AI Agent")
 
         # Single click to toggle the panel
         self.tray.activated.connect(self.on_tray_activated)

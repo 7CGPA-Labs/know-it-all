@@ -8,7 +8,7 @@ def on_button_clicked(widget, plugin):
     bus = SessionBus()
     try:
         service = bus.get('org.knowitall.CrawlerService')
-        html = service.AskQuestion("Tell me about Semi-AI")
+        html = service.AskQuestion("Tell me about Know-It-All")
         # Pop up a dialog with the result
         dialog = Gtk.MessageDialog(
             parent=None,

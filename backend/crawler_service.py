@@ -156,13 +156,31 @@ def run_reranker_sidekick(query: str, context: str, config: dict) -> str:
     reranked_sents = sorted(zip(scores, [item[1] for item in scored_sents]), key=lambda x: x[0], reverse=True)[:3]
     return " ".join([item[1] for item in reranked_sents])
 
+def run_intent_classifier_sidekick(query: str, config: dict) -> str:
+    verifier = get_cross_encoder(config["sidekicks"]["verifier"])
+    hypotheses = [
+        "This query is asking for a mathematical calculation or calculation of numbers.",
+        "This query is asking for real-time facts, news, or general search information.",
+        "This query is a conversational prompt, greeting, or request for general writing."
+    ]
+    pairs = [(query, hyp) for hyp in hypotheses]
+    preds = verifier.predict(pairs)
+    scores = preds.tolist() if hasattr(preds, 'tolist') else list(preds)
+    
+    entailment_scores = [score_array[1] for score_array in scores]
+    max_idx = entailment_scores.index(max(entailment_scores))
+    intents = ["math", "search", "chat"]
+    print(f"Classifier Intent Routing: query='{query}' classified as {intents[max_idx]} (scores: math={entailment_scores[0]:.2f}, search={entailment_scores[1]:.2f}, chat={entailment_scores[2]:.2f})")
+    return intents[max_idx]
+
 def run_verifier_sidekick(query: str, context: str, config: dict) -> str:
     sentences = [s for s in get_sentences(context) if len(s.split()) >= 6]
     if not sentences:
         return "No content to verify."
         
     verifier = get_cross_encoder(config["sidekicks"]["verifier"])
-    nli_pairs = [(s, query) for s in sentences]
+    # Transformed hypothesis mapping to ensure NLI evaluates questions correctly
+    nli_pairs = [(sent, f"This text provides information about: {query}") for sent in sentences]
     preds = verifier.predict(nli_pairs)
     scores = preds.tolist() if hasattr(preds, 'tolist') else list(preds)
     
@@ -412,9 +430,78 @@ class CrawlerService(object):
         
         if _ml_pipeline_enabled:
             try:
-                summary_text = run_agent_loop(query, config, search_results_holder)
+                # 1. Run classifier sidekick to route query intent
+                intent = run_intent_classifier_sidekick(query, config)
+                
+                if intent == "math":
+                    # Route to Math Solver directly
+                    math_expr_match = re.search(r'([0-9+\-*/%().\s]+)', query)
+                    expr = math_expr_match.group(1).strip() if math_expr_match else query
+                    summary_text = evaluate_expression(expr)
+                    
+                elif intent == "chat":
+                    # Direct chat with the main boss Qwen (no web latency!)
+                    boss_model, boss_tokenizer = get_boss_generator(config["main_boss"])
+                    messages = [
+                        {"role": "system", "content": "You are a helpful local assistant. Answer the user query naturally and concisely. Keep it under 2-3 sentences."},
+                        {"role": "user", "content": query}
+                    ]
+                    prompt = boss_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                    inputs = boss_tokenizer([prompt], return_tensors="pt")
+                    outputs = boss_model.generate(
+                        inputs["input_ids"],
+                        max_new_tokens=150,
+                        do_sample=True,
+                        temperature=0.7,
+                        pad_token_id=boss_tokenizer.eos_token_id
+                    )
+                    gen_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs["input_ids"], outputs)]
+                    summary_text = boss_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)[0].strip()
+                    
+                else:
+                    # intent == "search"
+                    # Run Keyword Extractor sidekick
+                    search_keywords = get_keywords_query(query)
+                    
+                    # Run Web Scraper (Informant)
+                    search_results_holder = scrape_duckduckgo(search_keywords)
+                    
+                    if search_results_holder:
+                        context_text = " ".join([res["snippet"] for res in search_results_holder])
+                        
+                        # Run Reranker sidekick
+                        ranked_context = run_reranker_sidekick(query, context_text, config)
+                        
+                        # Run NLI Verifier sidekick
+                        verified_context = run_verifier_sidekick(query, ranked_context, config)
+                        
+                        # Ultimate generation via Qwen (Main Boss)
+                        boss_model, boss_tokenizer = get_boss_generator(config["main_boss"])
+                        messages = [
+                            {
+                                "role": "system", 
+                                "content": "You are a helpful local assistant. Write a short, highly cohesive, and natural summary of the provided Context to answer the user Query. Do not mention any website metadata, citations, or irrelevant details. Keep the final response under 3-4 sentences."
+                            },
+                            {
+                                "role": "user", 
+                                "content": f"Context: {verified_context}\n\nQuery: {query}"
+                            }
+                        ]
+                        prompt = boss_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                        inputs = boss_tokenizer([prompt], return_tensors="pt")
+                        outputs = boss_model.generate(
+                            inputs["input_ids"],
+                            max_new_tokens=150,
+                            do_sample=True,
+                            temperature=0.7,
+                            pad_token_id=boss_tokenizer.eos_token_id
+                        )
+                        gen_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs["input_ids"], outputs)]
+                        summary_text = boss_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)[0].strip()
+                    else:
+                        summary_text = "No search results found."
             except Exception as e:
-                print(f"ML Agent loop error (falling back to classical): {e}")
+                print(f"ML Pipeline error (falling back to classical): {e}")
                 
         if not summary_text:
             # Classical extractive fallback (Informant + Summarizer fallback)

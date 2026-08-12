@@ -11,7 +11,7 @@ Package: know-it-all
 Version: 1.0.0
 Architecture: all
 Maintainer: User
-Description: Semi-AI NLP Webcrawler widget
+Description: Know-It-All AI Agent Webcrawler widget
 EOF
 
 # Install python dependencies locally for packaging (mock)
@@ -48,7 +48,7 @@ cat <<EOF > build_output/usr/share/xfce4/panel/plugins/knowitall.desktop
 Type=X-XFCE-PanelPlugin
 Encoding=UTF-8
 Name=Know-It-All
-Comment=Semi-AI NLP Webcrawler widget
+Comment=Know-It-All AI Agent Webcrawler widget
 Icon=applications-other
 X-XFCE-Exec=/opt/knowitall/venv/bin/python3 /opt/knowitall/frontends/xfce/knowitall_xfce.py
 X-XFCE-Unique=true
