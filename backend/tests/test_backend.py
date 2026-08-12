@@ -133,5 +133,28 @@ class TestAgentLoopMock(unittest.TestCase):
             self.assertEqual(answer, "Argentina won the 2022 world cup.")
             self.assertEqual(len(holder), 1)
 
+    @patch('crawler_service.get_cross_encoder')
+    def test_run_hallucination_guardrail(self, mock_get_cross):
+        mock_verifier = MagicMock()
+        # Mock scores:
+        # Sentence 1: contradiction = 0.1, entailment = 0.8, neutral = 0.1 -> Keep
+        # Sentence 2: contradiction = 0.9, entailment = 0.05, neutral = 0.05 -> Remove (Hallucination)
+        mock_verifier.predict.return_value = [
+            [0.1, 0.8, 0.1],
+            [0.9, 0.05, 0.05]
+        ]
+        mock_get_cross.return_value = mock_verifier
+        
+        generated_text = "Superman is a hero. Batman is a Marvel character."
+        context = "Superman is a hero from DC Comics. Batman is a DC character."
+        config = {
+            "sidekicks": {
+                "verifier": "cross-encoder/nli-distilroberta-base"
+            }
+        }
+        
+        cleaned = crawler_service.run_hallucination_guardrail(generated_text, context, config)
+        self.assertEqual(cleaned, "Superman is a hero.")
+
 if __name__ == '__main__':
     unittest.main()

@@ -153,7 +153,7 @@ def run_reranker_sidekick(query: str, context: str, config: dict) -> str:
     preds = reranker.predict(pairs)
     scores = preds.tolist() if hasattr(preds, 'tolist') else list(preds)
     
-    reranked_sents = sorted(zip(scores, [item[1] for item in scored_sents]), key=lambda x: x[0], reverse=True)[:3]
+    reranked_sents = sorted(zip(scores, [item[1] for item in scored_sents]), key=lambda x: x[0], reverse=True)[:8]
     return " ".join([item[1] for item in reranked_sents])
 
 def run_intent_classifier_sidekick(query: str, config: dict) -> str:
@@ -196,8 +196,30 @@ def run_verifier_sidekick(query: str, context: str, config: dict) -> str:
         
     if not verified:
         return "No facts could be verified."
-    return " ".join(verified[:3])
+    return " ".join(verified[:6])
 
+def run_hallucination_guardrail(generated_text: str, context: str, config: dict) -> str:
+    gen_sentences = [s for s in get_sentences(generated_text) if len(s.split()) >= 3]
+    if not gen_sentences:
+        return generated_text
+        
+    verifier = get_cross_encoder(config["sidekicks"]["verifier"])
+    nli_pairs = [(context, sent) for sent in gen_sentences]
+    preds = verifier.predict(nli_pairs)
+    scores = preds.tolist() if hasattr(preds, 'tolist') else list(preds)
+    
+    clean_sentences = []
+    for scores_array, sent in zip(scores, gen_sentences):
+        contradiction = scores_array[0]
+        entailment = scores_array[1]
+        neutral = scores_array[2]
+        
+        if contradiction > entailment and contradiction > neutral:
+            print(f"Hallucination Guardrail: Filtering out unsupported sentence: '{sent}'")
+            continue
+        clean_sentences.append(sent)
+        
+    return " ".join(clean_sentences) if clean_sentences else generated_text
 
 # --- Classical Extractive Fallback ---
 
@@ -480,7 +502,7 @@ class CrawlerService(object):
                         messages = [
                             {
                                 "role": "system", 
-                                "content": "You are a helpful local assistant. Write a short, highly cohesive, and natural summary of the provided Context to answer the user Query. Do not mention any website metadata, citations, or irrelevant details. Keep the final response under 3-4 sentences."
+                                "content": "You are a helpful local assistant. Write a detailed, comprehensive, and highly cohesive summary of the provided Context to answer the user Query. Do not mention any website metadata, citations, or irrelevant details. Answer in detail in multiple lines."
                             },
                             {
                                 "role": "user", 
@@ -491,13 +513,15 @@ class CrawlerService(object):
                         inputs = boss_tokenizer([prompt], return_tensors="pt")
                         outputs = boss_model.generate(
                             inputs["input_ids"],
-                            max_new_tokens=150,
+                            max_new_tokens=300,
                             do_sample=True,
                             temperature=0.7,
                             pad_token_id=boss_tokenizer.eos_token_id
                         )
                         gen_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs["input_ids"], outputs)]
-                        summary_text = boss_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)[0].strip()
+                        raw_summary = boss_tokenizer.batch_decode(gen_ids, skip_special_tokens=True)[0].strip()
+                        # Apply Hallucination Guardrail sidekick
+                        summary_text = run_hallucination_guardrail(raw_summary, verified_context, config)
                     else:
                         summary_text = "No search results found."
             except Exception as e:
