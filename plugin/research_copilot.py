@@ -108,8 +108,7 @@ class ResearchCopilotPlugin(GObject.Object, Gedit.WindowActivatable):
         self.panel_widget.show_all()
 
         side_panel = self.window.get_side_panel()
-        icon = Gtk.Image.new_from_icon_name("system-search", Gtk.IconSize.MENU)
-        side_panel.add_item(self.panel_widget, "ResearchCopilot", "AI Web & Markdown Copilot", icon)
+        side_panel.add_titled(self.panel_widget, "ResearchCopilot", "AI Web & Copilot")
 
         # Connect to active tab signals
         self.window.connect("active-tab-changed", self.on_active_tab_changed)
@@ -121,9 +120,12 @@ class ResearchCopilotPlugin(GObject.Object, Gedit.WindowActivatable):
             self.active_doc_handler = None
 
         side_panel = self.window.get_side_panel()
-        if self.panel_widget:
-            side_panel.remove_item(self.panel_widget)
+        if self.panel_widget and side_panel:
+            side_panel.remove(self.panel_widget)
             self.panel_widget = None
+
+    def do_update_state(self):
+        pass
 
     def on_active_tab_changed(self, window, tab):
         if self.current_doc and self.active_doc_handler:
