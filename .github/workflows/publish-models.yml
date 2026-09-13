@@ -34,8 +34,9 @@ jobs:
         run: |
           tar -czvf qwen2.5-0.5b-onnx.tar.gz -C service/models qwen2.5-0.5b-onnx
 
-      - name: Upload Release Asset
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
-        if: github.event_name == 'release'
         with:
+          tag_name: "v1.0.0"
+          name: "v1.0.0 - Qwen 2.5 ONNX Models & Plugin Release"
           files: qwen2.5-0.5b-onnx.tar.gz
