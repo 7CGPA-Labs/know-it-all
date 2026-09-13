@@ -26,9 +26,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install huggingface_hub
 
-      - name: Download Qwen 2.5 0.5B ONNX Model
+      - name: Download Qwen 2.5 0.5B INT4 Quantized ONNX Model
         run: |
-          python service/download_model.py --output service/models/qwen2.5-0.5b-onnx
+          python service/download_model.py --output service/models/qwen2.5-0.5b-onnx --quant q4
 
       - name: Compress Model Archive
         run: |
@@ -38,5 +38,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v1.0.0"
-          name: "v1.0.0 - Qwen 2.5 ONNX Models & Plugin Release"
+          name: "v1.0.0 - Qwen 2.5 INT4 ONNX Models & Plugin Release"
           files: qwen2.5-0.5b-onnx.tar.gz
