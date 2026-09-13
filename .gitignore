@@ -3,13 +3,16 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
 env/
 venv/
 ENV/
 service/venv/
 service/models/
 .pytest_cache/
+
+# Vala / C build outputs
+plugin/research_copilot.c
+plugin/libresearch_copilot.so
 
 # Build and distribution
 build/

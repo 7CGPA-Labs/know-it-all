@@ -1,6 +1,5 @@
 [Plugin]
 Module=research_copilot
-Loader=python3
 IAge=3
 Name=AI Web Research &amp; Markdown Copilot
 Description=Live Markdown preview &amp; containerized AI web research summarizer for Gedit
