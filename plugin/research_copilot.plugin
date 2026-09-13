@@ -1,0 +1,8 @@
+[Plugin]
+Module=research_copilot
+IAge=3
+Name=AI Web Research & Markdown Copilot
+Description=Live Markdown preview & containerized AI web research summarizer for Gedit
+Authors=Know-it-all Team
+Copyright=Copyright © 2026 Know-it-all Team
+Website=https://github.com/7CGPA-Labs/know-it-all

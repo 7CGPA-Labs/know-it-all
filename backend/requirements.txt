@@ -1,9 +1,0 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-beautifulsoup4
-requests
-pydbus
-Jinja2
-markdown
-torch
-transformers
-sentence-transformers

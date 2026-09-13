@@ -1,63 +1,91 @@
-# Know-It-All: local CPU AI Agent & Webcrawler
+# Gedit AI Web Research & Markdown Copilot
 
-Know-It-All is a desktop system tray widget that provides instant, high-quality, local Retrieval-Augmented Generation (RAG) answers. It runs entirely on your local CPU by orchestrating a **Boss-and-Sidekicks** agentic NLP pipeline.
-
----
-
-## 1. Architecture
-
-The system features a Python D-Bus backend service and a PyQt5 system tray widget. It is designed to run in under 1.5GB of RAM with low CPU latency.
-
-```mermaid
-graph TD
-    A[User Query] --> B[Sidekick 1: NLI Intent Classifier]
-    B -->|Classifies Math| C[Sidekick 2: Math Solver]
-    B -->|Classifies Chat| D[Main Boss: Qwen-0.5B Direct Chat]
-    B -->|Classifies Search| E[Sidekick 3: Keyword Extractor]
-    E -->|Search Terms| F[Informant: Web Scraper]
-    F -->|Raw Snippets| G[Sidekick 4: Cross-Encoder Reranker]
-    G -->|Top 8 Sentences| H[Sidekick 5: NLI Fact-Verifier]
-    H -->|Verified Context| D
-    D -->|Generated Answer| J[Sidekick 6: NLI Hallucination Guardrail]
-    J -->|Verified Final HTML| I[Beautiful Response]
-```
-
-### The Sidekicks (Context Preprocessors & Guardrails)
-1.  **Sidekick 1 (NLI Intent Classifier):** Uses `cross-encoder/nli-distilroberta-base` to determine if a query is a math calculation, conversational prompt, or web search.
-2.  **Sidekick 2 (Math Solver):** Safely parses and evaluates mathematical expressions.
-3.  **Sidekick 3 (Keyword Extractor):** Cleans stop-words and extracts core search terms from the query.
-4.  **Sidekick 4 (Semantic Reranker):** Tokenizes context and uses `ms-marco-MiniLM-L-6-v2` to extract the most relevant sentences.
-5.  **Sidekick 5 (NLI Fact-Verifier):** Verifies facts and removes contradictions using Natural Language Inference.
-6.  **Sidekick 6 (NLI Hallucination Guardrail):** Performs post-generation verification, splitting the generated text into sentences and filtering out any sentence unsupported by the retrieved context.
-
-### The Main Boss (Generator)
-*   **Qwen2.5-0.5B-Instruct:** Generates a conversational, cohesive final answer using the preprocessed context.
+A native Gedit side-panel plugin providing **Live Markdown Preview** and an **AI Web Research Copilot** (`trafilatura` + `Qwen-2.5-0.5B-Instruct` via `onnxruntime-genai`) running inside an isolated containerized service.
 
 ---
 
-## 2. Build and Installation
+## 🌟 Key Features
 
-### Prerequisites
-Install the required system libraries:
-```bash
-sudo apt update
-sudo apt install python3 python3-pip python3-gi gir1.2-glib-2.0 virtualenv
+1. **Live Markdown Preview**: Real-time rendering of your active Gedit Markdown document via WebKit2GTK in the side panel, debounced to guarantee zero UI lag.
+2. **AI Web Research Copilot**: Ingests web URLs via `trafilatura` clean DOM extraction, applies a tailored **Agent Role Prompt**, synthesizes research notes using `Qwen-2.5-0.5B-Instruct` ONNX LLM, and allows 1-click **Insert at Cursor** into your document.
+3. **Container-Isolated Micro-Daemon**: Runs as an isolated service via Docker/Podman (or local Python venv) communicating over HTTP API on port `5055`.
+4. **Automated CI/CD**:
+   - `publish-models.yml`: Automated model packaging and GitHub Release assets.
+   - `build-plugin.yml`: Continuous Integration for container daemon builds and plugin packaging.
+
+---
+
+## 🏗️ Architecture
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                       Gedit Desktop Host                    │
+│                                                             │
+│   ┌─────────────────────────────────────────────────────┐   │
+│   │                 Gedit Side Panel                    │   │
+│   │  [ Tab 1: MD Preview ]   [ Tab 2: AI Copilot ]      │   │
+│   └──────────────────────────┬──────────────────────────┘   │
+└──────────────────────────────┼──────────────────────────────┘
+                               │ IPC (HTTP / JSON)
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 Container / Subprocess Daemon               │
+│                 (Docker / Podman / Local Venv)              │
+│                                                             │
+│  FastAPI (Port 5055)                                        │
+│  ├── /render-md (Markdown -> GTK Styled HTML)               │
+│  └── /scrape-and-summarize (Trafilatura + Qwen-2.5-0.5B)    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Packaging
-To build the Debian package (`.deb`):
+---
+
+## 🚀 Quick Start
+
+### 1. Download Model & Build Container Daemon
+
 ```bash
-./packaging/build_deb.sh
+# Download Qwen-2.5-0.5B ONNX Model weights
+make download-model
+
+# Build Docker / Podman daemon container image
+make build-container
+
+# Start the AI Research Daemon service
+./service/run_daemon.sh
 ```
 
-### Running Manually
-To run the D-Bus backend service manually:
+The daemon will start listening on `http://localhost:5055`.
+
+### 2. Install the Gedit Plugin
+
 ```bash
-cd backend
-python3 crawler_service.py
+make install-plugin
 ```
 
-To run the PyQt5 system tray application:
-```bash
-python3 frontends/lxqt/knowitall_lxqt_tray.py
-```
+This copies `research_copilot.plugin` and `research_copilot.py` to `~/.local/share/gedit/plugins/`.
+
+### 3. Enable in Gedit
+
+1. Open **Gedit**.
+2. Go to **Preferences** -> **Plugins**.
+3. Check the box for **AI Web Research & Markdown Copilot**.
+4. Press `F9` (or View -> Side Panel) to show the side panel.
+
+---
+
+## 🛠️ Development & Tooling
+
+| Makefile Target | Description |
+| :--- | :--- |
+| `make build-container` | Builds `gedit-research-daemon:latest` Docker/Podman image. |
+| `make download-model` | Downloads Qwen 2.5 0.5B ONNX model weights via `download_model.py`. |
+| `make install-plugin` | Installs plugin files to `~/.local/share/gedit/plugins/`. |
+| `make clean-legacy` | Purges legacy standalone application artifacts. |
+| `make test` | Executes unit tests via `pytest`. |
+
+---
+
+## 📄 License
+
+Distributed under the GNU General Public License v3. See [LICENSE](LICENSE) for details.
