@@ -25,7 +25,7 @@ build-plugin:
 	@echo "[*] Compiling Vala plugin research_copilot.vala to C..."
 	$(VALAC) -C $(VALA_PKGS) plugin/research_copilot.vala
 	@echo "[*] Compiling C source into shared library libresearch_copilot.so..."
-	$(CC) -shared -fPIC $(CFLAGS) $(GTK_CFLAGS) -o plugin/libresearch_copilot.so plugin/research_copilot.c $(GTK_LIBS)
+	$(CC) -shared -fPIC $(CFLAGS) $(GTK_CFLAGS) -o plugin/libresearch_copilot.so plugin/research_copilot.c $(GTK_LIBS) /usr/lib/x86_64-linux-gnu/gedit/libgedit-46.so /usr/lib/x86_64-linux-gnu/libtepl-6.so.4
 	@echo "[+] Vala plugin build successful! (plugin/libresearch_copilot.so)"
 
 download-model:

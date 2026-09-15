@@ -2,26 +2,17 @@ using Gtk;
 using Peas;
 using Soup;
 
-namespace Gedit {
-    [CCode (cheader_filename = "gedit/gedit-window.h", has_type_id = true)]
-    public interface WindowActivatable : GLib.Object {
-        public abstract Gedit.Window window { get; construct; }
-        public abstract void activate ();
-        public abstract void deactivate ();
-        public abstract void update_state ();
-    }
+[CCode (cheader_filename = "gtk/gtk.h")]
+extern Gtk.Widget gedit_window_get_side_panel (Gtk.Window window);
 
-    [CCode (cheader_filename = "gedit/gedit-window.h")]
-    public class Window : Gtk.Window {
-        public extern Gtk.Widget get_side_panel ();
-        public extern Gtk.Widget get_active_document ();
-    }
-}
+[CCode (cheader_filename = "gtk/gtk.h")]
+extern void tepl_panel_add (GLib.Object panel, Gtk.Widget widget, string name, string title, string? icon_name);
 
 namespace ResearchCopilot {
 
-    public class Plugin : GLib.Object, Gedit.WindowActivatable {
-        public Gedit.Window window { get; construct; }
+    public class Plugin : GLib.Object, Peas.Activatable {
+        [CCode (no_accessor_method = true)]
+        public GLib.Object object { owned get; construct; }
 
         private Gtk.Notebook panel_widget;
         private Gtk.TextView preview_view;
@@ -33,6 +24,9 @@ namespace ResearchCopilot {
         private Soup.Session soup_session;
 
         public void activate () {
+            var window = object as Gtk.Window;
+            if (window == null) return;
+
             panel_widget = new Gtk.Notebook ();
             soup_session = new Soup.Session ();
 
@@ -94,16 +88,19 @@ namespace ResearchCopilot {
 
             panel_widget.show_all ();
 
-            var side_panel = window.get_side_panel ();
+            var side_panel = gedit_window_get_side_panel (window);
             if (side_panel != null) {
-                GLib.Signal.emit_by_name (side_panel, "add-titled", panel_widget, "ResearchCopilot", "AI Web & Copilot");
+                tepl_panel_add (side_panel, panel_widget, "ResearchCopilot", "AI Web & Copilot", "system-search");
             }
         }
 
         public void deactivate () {
-            var side_panel = window.get_side_panel ();
-            if (side_panel != null && panel_widget != null) {
-                ((Gtk.Container) side_panel).remove (panel_widget);
+            var window = object as Gtk.Window;
+            if (window != null && panel_widget != null) {
+                var side_panel = gedit_window_get_side_panel (window);
+                if (side_panel != null && side_panel is Gtk.Container) {
+                    ((Gtk.Container) side_panel).remove (panel_widget);
+                }
                 panel_widget = null;
             }
         }
@@ -147,5 +144,5 @@ namespace ResearchCopilot {
 [ModuleInit]
 public void peas_register_types (Peas.ObjectModule module) {
     var obj_module = (Peas.ObjectModule) module;
-    obj_module.register_extension_type (typeof (Gedit.WindowActivatable), typeof (ResearchCopilot.Plugin));
+    obj_module.register_extension_type (typeof (Peas.Activatable), typeof (ResearchCopilot.Plugin));
 }
