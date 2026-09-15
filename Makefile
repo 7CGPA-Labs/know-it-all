@@ -11,6 +11,9 @@ GTK_LIBS := $(shell pkg-config --libs gtk+-3.0 libpeas-1.0 libsoup-3.0 gmodule-2
 SOUP_CFLAGS := $(shell pkg-config --cflags glib-2.0 libsoup-3.0)
 SOUP_LIBS := $(shell pkg-config --libs glib-2.0 libsoup-3.0)
 
+LIBGEDIT := $(shell find /usr/lib/x86_64-linux-gnu/gedit -name "libgedit-*.so*" 2>/dev/null | head -n 1)
+LIBTEPL := $(shell find /usr/lib/x86_64-linux-gnu -name "libtepl-*.so*" 2>/dev/null | head -n 1)
+
 PLUGIN_DIR ?= $(HOME)/.local/share/gedit/plugins
 
 all: help
@@ -25,7 +28,7 @@ build-plugin:
 	@echo "[*] Compiling Vala plugin research_copilot.vala to C..."
 	$(VALAC) -C $(VALA_PKGS) plugin/research_copilot.vala
 	@echo "[*] Compiling C source into shared library libresearch_copilot.so..."
-	$(CC) -shared -fPIC $(CFLAGS) $(GTK_CFLAGS) -o plugin/libresearch_copilot.so plugin/research_copilot.c $(GTK_LIBS) /usr/lib/x86_64-linux-gnu/gedit/libgedit-46.so /usr/lib/x86_64-linux-gnu/libtepl-6.so.4
+	$(CC) -shared -fPIC $(CFLAGS) $(GTK_CFLAGS) -o plugin/libresearch_copilot.so plugin/research_copilot.c $(GTK_LIBS) $(LIBGEDIT) $(LIBTEPL)
 	@echo "[+] Vala plugin build successful! (plugin/libresearch_copilot.so)"
 
 download-model:
