@@ -25,6 +25,11 @@ jobs:
           make build-daemon
           make build-plugin
 
+      - name: Create Model Placeholder for Offline CI Unit Testing
+        run: |
+          mkdir -p service/models/qwen2.5-0.5b-onnx
+          touch service/models/qwen2.5-0.5b-onnx/model.onnx
+
       - name: Run C Daemon Native Test Suite
         run: |
           make test

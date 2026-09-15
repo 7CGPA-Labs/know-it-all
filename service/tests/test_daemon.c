@@ -8,6 +8,26 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+static gboolean wait_for_daemon(SoupSession *session) {
+    g_print("[*] Waiting for daemon HTTP server to start on port 5055...\n");
+    for (int i = 0; i < 40; i++) {
+        SoupMessage *msg = soup_message_new("GET", "http://127.0.0.1:5055/health");
+        GError *error = NULL;
+        GBytes *body = soup_session_send_and_read(session, msg, NULL, &error);
+        if (body) {
+            g_bytes_unref(body);
+            g_object_unref(msg);
+            g_print("[+] Daemon is ready!\n");
+            return TRUE;
+        }
+        if (error) g_clear_error(&error);
+        g_object_unref(msg);
+        g_usleep(500000);
+    }
+    g_printerr("[!] Timed out waiting for daemon on port 5055!\n");
+    return FALSE;
+}
+
 static gboolean test_health(SoupSession *session) {
     g_print("[TEST] GET /health ... ");
     SoupMessage *msg = soup_message_new("GET", "http://127.0.0.1:5055/health");
@@ -104,9 +124,14 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    g_usleep(1500000);
-
     SoupSession *session = soup_session_new();
+
+    if (!wait_for_daemon(session)) {
+        g_printerr("[!] Daemon failed to start within timeout period.\n");
+        kill(daemon_pid, SIGTERM);
+        waitpid(daemon_pid, NULL, 0);
+        return 1;
+    }
 
     gboolean ok = TRUE;
     ok = ok && test_health(session);
