@@ -1,9 +1,0 @@
-fastapi>=0.100.0
-uvicorn>=0.22.0
-trafilatura>=1.6.0
-markdown>=3.4.0
-pydantic>=2.0.0
-huggingface_hub>=0.16.0
-requests>=2.30.0
-onnxruntime>=1.16.0
-onnxruntime-genai>=0.4.0

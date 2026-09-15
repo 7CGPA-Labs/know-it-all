@@ -13,6 +13,9 @@ service/models/
 # Vala / C build outputs
 plugin/research_copilot.c
 plugin/libresearch_copilot.so
+service/bin/
+service/tests/test_runner
+packaging/deb_build/
 
 # Build and distribution
 build/

@@ -1,88 +1,94 @@
-# Gedit AI Web Research & Markdown Copilot
+# Gedit AI Web Research & Markdown Copilot (100% C / Vala Architecture)
 
-A native Gedit side-panel plugin providing **Live Markdown Preview** and an **AI Web Research Copilot** (`trafilatura` + `Qwen-2.5-0.5B-Instruct` via `onnxruntime-genai`) running inside an isolated containerized service.
+A native, high-performance Gedit side-panel plugin written in **Vala & C** providing **Live Markdown Preview** and an **AI Web Research Copilot**, powered by a native **C Daemon** with **Intel OpenVINO Execution Provider** hardware acceleration for Intel integrated graphics (**iGPU**).
 
 ---
 
 ## 🌟 Key Features
 
-1. **Live Markdown Preview**: Real-time rendering of your active Gedit Markdown document via WebKit2GTK in the side panel, debounced to guarantee zero UI lag.
-2. **AI Web Research Copilot**: Ingests web URLs via `trafilatura` clean DOM extraction, applies a tailored **Agent Role Prompt**, synthesizes research notes using `Qwen-2.5-0.5B-Instruct` ONNX LLM, and allows 1-click **Insert at Cursor** into your document.
-3. **Container-Isolated Micro-Daemon**: Runs as an isolated service via Docker/Podman (or local Python venv) communicating over HTTP API on port `5055`.
-4. **Automated CI/CD**:
-   - `publish-models.yml`: Automated model packaging and GitHub Release assets.
-   - `build-plugin.yml`: Continuous Integration for container daemon builds and plugin packaging.
+1. **100% Pure C & Vala Core**: Zero Python overhead or Python runtime dependencies. Extremely fast startup and minimal memory footprint.
+2. **Intel OpenVINO iGPU Hardware Acceleration**: Utilizes ONNX Runtime accelerated by Intel OpenVINO EP on integrated graphics (`GPU` / `GPU.0` device) with automatic OpenCL kernel warm-up on launch.
+3. **Automated First-Launch Model Fetching**: Automatically fetches `Qwen-2.5-0.5B` INT4 ONNX models from **Hugging Face**, with automated fallbacks to **GitHub Releases** and **HF-Mirror**.
+4. **Debian Packaging (`.deb`)**: Package generation script for seamless Linux distribution and system-wide installation.
+5. **Native Gedit IPC**: Asynchronous non-blocking HTTP IPC via `LibSoup 3` between Vala plugin (`libresearch_copilot.so`) and C daemon (`service/bin/daemon` on port `5055`).
 
 ---
 
 ## 🏗️ Architecture
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                       Gedit Desktop Host                    │
-│                                                             │
-│   ┌─────────────────────────────────────────────────────┐   │
-│   │                 Gedit Side Panel                    │   │
-│   │  [ Tab 1: MD Preview ]   [ Tab 2: AI Copilot ]      │   │
-│   └──────────────────────────┬──────────────────────────┘   │
-└──────────────────────────────┼──────────────────────────────┘
-                               │ IPC (HTTP / JSON)
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Container / Subprocess Daemon               │
-│                 (Docker / Podman / Local Venv)              │
-│                                                             │
-│  FastAPI (Port 5055)                                        │
-│  ├── /render-md (Markdown -> GTK Styled HTML)               │
-│  └── /scrape-and-summarize (Trafilatura + Qwen-2.5-0.5B)    │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          Gedit Host Process                             │
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                        Gedit Side Panel                           │  │
+│  │   [ Tab 1: Live MD Preview ]       [ Tab 2: AI Web Copilot ]      │  │
+│  └─────────────────────────────────┬─────────────────────────────────┘  │
+│                                    │                                    │
+│             Native Vala Plugin (libresearch_copilot.so)                 │
+└────────────────────────────────────┼────────────────────────────────────┘
+                                     │ Async HTTP / LibSoup 3
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                Native C AI Research Daemon (Port 5055)                  │
+│                (libxml2 + cmark + LibSoup 3 HTTP Server)                │
+│                                                                         │
+│  1. First Launch Handler: Auto-fetch Qwen 2.5 INT4 ONNX from            │
+│     Hugging Face -> Fallback to GitHub Release -> Fallback to HF-Mirror.  │
+│  2. Intel OpenVINO iGPU Execution Provider ("GPU" device).              │
+│  3. Warm-up Sync: Waits until OpenVINO iGPU kernel compilation finishes │
+│     before serving live inference requests.                             │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Download Model & Build Container Daemon
+### Option 1: Install via Debian Package (`.deb`)
 
 ```bash
-# Download Qwen-2.5-0.5B ONNX Model weights
-make download-model
+# Build the Debian package
+make deb
 
-# Build Docker / Podman daemon container image
-make build-container
-
-# Start the AI Research Daemon service
-./service/run_daemon.sh
+# Install system-wide
+sudo dpkg -i knowitall.deb
 ```
 
-The daemon will start listening on `http://localhost:5055`.
-
-### 2. Install the Gedit Plugin
+### Option 2: Build & Install Locally
 
 ```bash
+# Compile native C daemon and Vala plugin
+make build-daemon
+make build-plugin
+
+# Download Qwen-2.5-0.5B INT4 ONNX model weights
+make download-model
+
+# Install Vala plugin locally
 make install-plugin
 ```
 
-This copies `research_copilot.plugin` and `research_copilot.py` to `~/.local/share/gedit/plugins/`.
-
-### 3. Enable in Gedit
+### Enable in Gedit
 
 1. Open **Gedit**.
-2. Go to **Preferences** -> **Plugins**.
-3. Check the box for **AI Web Research & Markdown Copilot**.
-4. Press `F9` (or View -> Side Panel) to show the side panel.
+2. Navigate to **Preferences** -> **Plugins**.
+3. Enable **AI Web Research & Markdown Copilot**.
+4. Press `F9` to toggle the Gedit side panel.
 
 ---
 
-## 🛠️ Development & Tooling
+## 🛠️ Build & Tooling Targets
 
 | Makefile Target | Description |
 | :--- | :--- |
-| `make build-container` | Builds `gedit-research-daemon:latest` Docker/Podman image. |
-| `make download-model` | Downloads Qwen 2.5 0.5B ONNX model weights via `download_model.py`. |
-| `make install-plugin` | Installs plugin files to `~/.local/share/gedit/plugins/`. |
-| `make clean-legacy` | Purges legacy standalone application artifacts. |
-| `make test` | Executes unit tests via `pytest`. |
+| `make build-daemon` | Compiles native C daemon binary (`service/bin/daemon`). |
+| `make build-plugin` | Compiles Vala plugin into native shared object (`libresearch_copilot.so`). |
+| `make download-model` | Auto-fetches Qwen-2.5 INT4 ONNX model with Hugging Face & GitHub Release fallbacks. |
+| `make install-plugin` | Installs plugin files into `~/.local/share/gedit/plugins/`. |
+| `make deb` | Builds Debian binary distribution package (`knowitall.deb`). |
+| `make test` | Compiles and runs native C daemon unit test suite (`service/tests/test_daemon.c`). |
+| `make clean` | Purges compiled binaries, intermediate objects, and package build directories. |
 
 ---
 

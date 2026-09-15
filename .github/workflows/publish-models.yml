@@ -16,19 +16,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install huggingface_hub
-
       - name: Download Qwen 2.5 0.5B INT4 Quantized ONNX Model
         run: |
-          python service/download_model.py --output service/models/qwen2.5-0.5b-onnx --quant q4
+          chmod +x service/download_model.sh
+          service/download_model.sh service/models/qwen2.5-0.5b-onnx
 
       - name: Compress Model Archive
         run: |

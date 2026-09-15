@@ -1,4 +1,4 @@
-name: Build and Test Gedit Plugin
+name: Build and Test Gedit Plugin & Daemon
 
 on:
   push:
@@ -15,29 +15,19 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python & Build Dependencies
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
       - name: Install Vala & GTK Development Headers
         run: |
           sudo apt-get update
-          sudo apt-get install -y valac libgtk-3-dev libpeas-dev libsoup-3.0-dev
+          sudo apt-get install -y valac libgtk-3-dev libpeas-dev libsoup-3.0-dev gcc make curl
 
-      - name: Install Daemon Dependencies
+      - name: Build C Daemon & Vala Plugin
         run: |
-          python -m pip install --upgrade pip
-          pip install -r service/requirements.txt
-
-      - name: Build Vala Plugin & Run Tests
-        run: |
+          make build-daemon
           make build-plugin
-          PYTHONPATH=. python -m unittest service/tests/test_server.py
 
-      - name: Build Docker Container
+      - name: Run C Daemon Native Test Suite
         run: |
-          docker build -t gedit-research-daemon:ci service/
+          make test
 
   package-plugin:
     runs-on: ubuntu-latest
